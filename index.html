@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#050608" />
+<title>Oil Oracle ELITE — Daily Open/Close Predictor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ctext y='20' font-size='22'%3E🛢️%3C/text%3E%3C/svg%3E" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { background: #050608; color: #d4d8dc; font-family: 'JetBrains Mono','Courier New',monospace; min-height: 100vh; overflow-x: hidden; }
+  body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:1; background: radial-gradient(ellipse at top, rgba(255,80,30,0.08), transparent 60%), radial-gradient(ellipse at bottom right, rgba(20,100,200,0.06), transparent 60%); }
+  body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:2; background: repeating-linear-gradient(transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 3px); }
+  .app { position:relative; z-index:10; max-width:1280px; margin:0 auto; padding:24px 16px 60px; }
+  h1 { font-size:clamp(26px,5vw,46px); font-weight:900; letter-spacing:-0.02em; line-height:1; margin-bottom:6px; background:linear-gradient(180deg,#fff,#ff8855); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .sub { font-size:11px; letter-spacing:0.3em; color:#506070; margin-bottom:20px; }
+  .tabs { display:flex; gap:8px; margin-bottom:24px; border-bottom:1px solid rgba(255,102,51,0.2); flex-wrap:wrap; }
+  .tab { padding:12px 20px; font-size:11px; letter-spacing:0.2em; font-family:inherit; background:transparent; border:none; color:#607080; cursor:pointer; border-bottom:2px solid transparent; }
+  .tab.active { color:#ff8855; border-bottom-color:#ff6633; }
+  .card { padding:20px; border:1px solid rgba(255,102,51,0.2); background:rgba(255,102,51,0.03); margin-bottom:16px; }
+  .card h3 { font-size:12px; letter-spacing:0.2em; color:#ff8855; margin-bottom:10px; }
+  .card p { font-size:12px; color:#a0a8b0; line-height:1.7; margin-bottom:8px; }
+  .modes { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin:16px 0; }
+  .mode { padding:16px; border:1px solid rgba(80,100,120,0.3); background:rgba(0,0,0,0.3); cursor:pointer; transition:all .2s; }
+  .mode:hover { border-color:#ff6633; background:rgba(255,102,51,0.05); }
+  .mode.selected { border-color:#ff6633; background:rgba(255,102,51,0.08); }
+  .mode .name { font-size:12px; color:#d4d8dc; font-weight:700; letter-spacing:0.15em; margin-bottom:6px; }
+  .mode .desc { font-size:10px; color:#607080; line-height:1.5; }
+  .mode .time { font-size:9px; color:#ff8855; letter-spacing:0.2em; margin-top:8px; }
+  .btn-primary { padding:16px 40px; font-size:13px; letter-spacing:0.3em; font-family:inherit; font-weight:900; background:linear-gradient(135deg,#ff4400,#ff8833); border:none; color:#000; cursor:pointer; box-shadow:0 0 50px rgba(255,80,0,0.4); transition:all .2s; width:100%; max-width:420px; }
+  .btn-primary:hover { box-shadow:0 0 80px rgba(255,80,0,0.6); }
+  .btn-test, .btn-secondary { padding:12px 28px; font-size:11px; letter-spacing:0.2em; font-family:inherit; background:transparent; border:1px solid rgba(95,184,255,0.4); color:#5fb8ff; cursor:pointer; margin:4px; }
+  .btn-secondary { border-color:rgba(255,102,51,0.4); color:#ff8855; }
+  .btn-test:hover { background:rgba(95,184,255,0.08); }
+  .btn-secondary:hover { background:rgba(255,102,51,0.08); }
+  .test-result { padding:14px 16px; margin-top:12px; font-size:12px; line-height:1.6; border:1px solid; word-break:break-word; }
+  .test-ok { border-color:rgba(95,255,175,0.4); background:rgba(95,255,175,0.05); color:#5fffaf; }
+  .test-warn { border-color:rgba(255,184,77,0.4); background:rgba(255,184,77,0.05); color:#ffb84d; }
+  .test-err { border-color:rgba(255,77,109,0.4); background:rgba(255,77,109,0.05); color:#ff4d6d; }
+  .clock { font-size:12px; color:#d4d8dc; }
+  .status-bar { padding:16px 20px; border:1px solid rgba(255,102,51,0.4); background:linear-gradient(90deg,rgba(255,102,51,0.08),transparent); margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+  .pulse { width:10px; height:10px; border-radius:50%; background:#ff4444; box-shadow:0 0 12px #ff4444; animation:pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:.5;transform:scale(.9);} }
+  .status-bar .label { font-size:12px; letter-spacing:0.2em; color:#ff8855; font-weight:700; }
+  .status-bar .sublabel { font-size:10px; color:#607080; margin-top:2px; }
+  .status-bar .timer { font-size:22px; color:#ff8855; font-weight:700; }
+  .agent-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; margin-bottom:16px; }
+  .agent { padding:14px 16px; border:1px solid rgba(64,72,80,0.4); background:rgba(0,0,0,0.3); transition:all .3s; }
+  .agent.running { border-color:rgba(255,136,85,0.4); background:linear-gradient(90deg,rgba(255,136,85,0.1),rgba(0,0,0,0.3)); }
+  .agent.done { border-color:rgba(95,255,175,0.3); }
+  .agent.error { border-color:rgba(255,77,109,0.4); }
+  .agent-row { display:flex; justify-content:space-between; align-items:center; }
+  .agent .name { font-size:10px; letter-spacing:0.15em; font-weight:700; }
+  .agent .state { font-size:9px; color:#506070; margin-top:4px; text-transform:uppercase; letter-spacing:0.2em; }
+  .agent.running .name { color:#ff8855; } .agent.done .name { color:#5fffaf; } .agent.error .name { color:#ff4d6d; }
+  .spin { animation:spin 1s linear infinite; display:inline-block; }
+  @keyframes spin { from{transform:rotate(0);} to{transform:rotate(360deg);} }
+  .log { height:240px; overflow-y:auto; padding:14px 18px; border:1px solid rgba(80,90,100,0.25); background:rgba(0,0,0,0.6); font-size:11px; line-height:1.85; }
+  .log .time { color:#303840; margin-right:10px; }
+  .log .ok{color:#5fffaf;} .log .err{color:#ff4d6d;} .log .warn{color:#ff8855;} .log .start{color:#5fb8ff;} .log .info{color:#607080;} .log .gem{color:#a855f7;}
+  @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0;} } .blink{animation:blink 1s infinite;}
+  .signal-banner { padding:26px 28px; margin-bottom:22px; position:relative; overflow:hidden; }
+  .signal-banner .quality { position:absolute; top:12px; right:16px; font-size:9px; letter-spacing:0.2em; color:#506070; }
+  .signal-banner .signal-label { font-size:10px; letter-spacing:0.3em; color:#506070; margin-bottom:8px; }
+  .signal-banner .signal-value { font-size:clamp(30px,5vw,50px); font-weight:900; letter-spacing:0.05em; line-height:1; margin-bottom:12px; }
+  .signal-banner .driver { font-size:13px; color:#a0a8b0; line-height:1.6; max-width:720px; }
+  .signal-banner .levels { margin-top:14px; display:flex; gap:16px; flex-wrap:wrap; font-size:10px; color:#506070; letter-spacing:0.1em; }
+  .section-label { font-size:9px; letter-spacing:0.3em; color:#ff6633; margin-bottom:12px; margin-top:4px; }
+  .grid { display:grid; gap:10px; margin-bottom:22px; }
+  .g-prices { grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); }
+  .g-fc { grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); }
+  .g-status { grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); }
+  .g-scen { grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); }
+  .pcard { padding:16px 18px; }
+  .pcard .lbl { font-size:9px; color:#506070; letter-spacing:0.2em; margin-bottom:6px; }
+  .pcard .val { font-size:23px; font-weight:800; line-height:1; }
+  .pcard .anchor { font-size:8px; color:#5fffaf; margin-top:6px; letter-spacing:0.1em; }
+  .fcard { padding:18px; position:relative; }
+  .fcard.primary { border-width:2px; }
+  .fcard .ptag { position:absolute; top:0; right:0; font-size:8px; padding:3px 10px; color:#000; letter-spacing:0.2em; font-weight:700; }
+  .fcard .day { font-size:9px; color:#506070; letter-spacing:0.25em; margin-bottom:10px; }
+  .fcard .price { font-size:26px; font-weight:800; line-height:1; margin-bottom:6px; }
+  .fcard.primary .price { font-size:30px; }
+  .fcard .range { font-size:10px; color:#607080; margin-bottom:8px; }
+  .fcard .cr { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .fcard .cb { flex:1; height:3px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden; }
+  .fcard .cf { height:100%; }
+  .fcard .ct { font-size:11px; font-weight:700; }
+  .fcard .cat { font-size:10px; color:#7080a0; margin-top:8px; padding-top:10px; border-top:1px solid rgba(80,100,120,0.2); line-height:1.5; }
+  .scard { padding:12px 14px; text-align:center; }
+  .scard .lbl { font-size:8px; color:#506070; letter-spacing:0.2em; margin-bottom:6px; }
+  .scard .val { font-size:13px; font-weight:800; }
+  .sccard { padding:16px; }
+  .sccard .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .sccard .nm { font-size:10px; letter-spacing:0.2em; font-weight:700; }
+  .sccard .pr { font-size:12px; font-weight:700; }
+  .sccard .tg { font-size:22px; font-weight:800; margin-bottom:10px; }
+  .sccard .tr { font-size:10px; color:#7080a0; line-height:1.6; }
+  .factors { border:1px solid rgba(80,100,120,0.2); background:rgba(0,0,0,0.3); padding:16px 20px; margin-bottom:22px; }
+  .factor { display:grid; grid-template-columns:24px 1fr auto auto; gap:12px; align-items:flex-start; padding:10px 0; border-bottom:1px solid rgba(80,100,120,0.15); }
+  .factor:last-child { border-bottom:none; }
+  .factor .num { color:#304050; font-size:10px; font-weight:700; }
+  .factor .fn { font-size:12px; color:#c4ccd4; font-weight:700; margin-bottom:3px; }
+  .factor .ev { font-size:10px; color:#7080a0; line-height:1.5; }
+  .factor .wt { font-size:8px; padding:3px 8px; border:1px solid; letter-spacing:0.1em; }
+  .factor .dr { font-size:11px; font-weight:700; }
+  .watch { margin-bottom:22px; padding:18px 22px; border:1px solid rgba(255,184,77,0.25); background:rgba(255,184,77,0.04); }
+  .watch-label { font-size:9px; letter-spacing:0.3em; color:#ffb84d; margin-bottom:12px; }
+  .witem { display:flex; gap:10px; font-size:11px; color:#a0a8b0; line-height:1.6; margin-bottom:8px; }
+  .mbox { margin-bottom:16px; padding:16px 20px; }
+  .crit { border:1px solid rgba(168,85,247,0.2); background:rgba(168,85,247,0.04); }
+  .crit-label { font-size:9px; letter-spacing:0.3em; color:#a855f7; margin-bottom:10px; }
+  .crit p { font-size:11px; color:#a0a0c0; line-height:1.7; }
+  .swan { margin-bottom:16px; padding:14px 18px; border:1px solid rgba(255,77,109,0.3); background:rgba(255,77,109,0.04); }
+  .swan-label { font-size:9px; letter-spacing:0.3em; color:#ff4d6d; margin-bottom:8px; }
+  .swan p { font-size:12px; color:#c0a0a8; line-height:1.7; }
+  .summary { margin-bottom:22px; padding:22px 26px; border:1px solid rgba(255,102,51,0.3); background:linear-gradient(135deg,rgba(255,102,51,0.06),transparent); }
+  .summary-label { font-size:9px; letter-spacing:0.3em; color:#ff6633; margin-bottom:12px; }
+  .summary p { font-size:14px; color:#c4ccd4; line-height:1.85; }
+  details { border:1px solid rgba(80,100,120,0.2); background:rgba(0,0,0,0.4); margin-bottom:6px; }
+  summary { padding:10px 14px; cursor:pointer; font-size:11px; color:#7080a0; letter-spacing:0.1em; list-style:none; display:flex; justify-content:space-between; align-items:center; }
+  summary::-webkit-details-marker{display:none;} summary::before{content:'▸ ';color:#404850;} details[open] summary::before{content:'▾ ';}
+  pre { padding:14px; font-size:10px; color:#6070a0; line-height:1.7; white-space:pre-wrap; background:rgba(0,0,0,0.4); max-height:300px; overflow-y:auto; font-family:inherit; }
+  .footer { text-align:center; padding:20px 0; border-top:1px solid rgba(80,100,120,0.15); margin-top:10px; }
+  .disclaimer { font-size:10px; color:#304050; letter-spacing:0.1em; margin-bottom:16px; line-height:1.8; }
+  .error-box { padding:30px; border:1px solid rgba(255,77,109,0.4); background:rgba(255,77,109,0.05); margin-bottom:16px; }
+  .error-box .lb { font-size:14px; color:#ff4d6d; letter-spacing:0.2em; margin-bottom:14px; font-weight:700; }
+  .error-box .ms { font-size:12px; color:#aaa; margin-bottom:20px; line-height:1.7; word-break:break-word; }
+  ::-webkit-scrollbar{width:4px;height:4px;} ::-webkit-scrollbar-track{background:rgba(0,0,0,0.3);} ::-webkit-scrollbar-thumb{background:rgba(255,102,51,0.3);border-radius:2px;}
+  .hidden{display:none!important;}
+  /* track record */
+  .stat-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin-bottom:20px; }
+  .stat-big { padding:20px; text-align:center; border:1px solid rgba(95,255,175,0.3); background:rgba(95,255,175,0.04); }
+  .stat-big .n { font-size:36px; font-weight:900; color:#5fffaf; line-height:1; }
+  .stat-big .l { font-size:9px; color:#506070; letter-spacing:0.2em; margin-top:8px; }
+  .pred-row { display:grid; grid-template-columns:90px 1fr 80px 80px 70px; gap:10px; padding:12px 14px; border-bottom:1px solid rgba(80,100,120,0.15); font-size:11px; align-items:center; }
+  .pred-row.head { color:#506070; font-size:9px; letter-spacing:0.15em; border-bottom:1px solid rgba(255,102,51,0.2); }
+  .grade-input { width:70px; padding:6px; font-family:inherit; font-size:11px; background:rgba(0,0,0,0.5); border:1px solid rgba(80,100,120,0.4); color:#d4d8dc; }
+  .hit { color:#5fffaf; } .miss { color:#ff4d6d; } .pending { color:#ffb84d; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>OIL ORACLE <span style="font-size:0.4em;color:#ff6633;letter-spacing:0.2em;">ELITE</span></h1>
+  <div class="sub">v4.0 · HYBRID AI · FRED-ANCHORED · SELF-GRADING</div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="predict">⚡ PREDICT</button>
+    <button class="tab" data-tab="record">📊 TRACK RECORD</button>
+    <button class="tab" data-tab="setup">⚙ SETUP</button>
+  </div>
+
+  <!-- PREDICT TAB -->
+  <div id="tab-predict">
+    <div id="predict-home">
+      <div class="card">
+        <h3>◢ MULTI-TIER ACTUARIAL ENGINE</h3>
+        <p>① Gemini (free) runs web-research agents · ② independent voting council (Gemini, Groq + any paid models) each makes its own call · ③ a Heretic argues against the consensus · ④ Claude adjudicates like a head actuary. FRED + EIA anchor real crude & diesel prices.</p>
+      </div>
+      <div class="card">
+        <h3>◢ SELECT MODE</h3>
+        <div class="modes" id="mode-selector">
+          <div class="mode" data-mode="quick">
+            <div class="name">⚡ QUICK</div>
+            <div class="desc">FRED anchor + 1 Gemini sweep + Claude synthesis</div>
+            <div class="time">~ 30-45 SEC</div>
+          </div>
+          <div class="mode selected" data-mode="full">
+            <div class="name">🛢️ FULL ELITE</div>
+            <div class="desc">FRED + 5 Gemini agents + Polymarket + Claude synthesis + auto-logs to track record</div>
+            <div class="time">~ 60-90 SEC</div>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:24px;">
+        <button class="btn-primary" id="launch-btn">⚡ RUN ELITE PREDICTION</button>
+        <div style="margin-top:14px;font-size:10px;color:#506070;letter-spacing:0.15em;">FREE GEMINI RESEARCH · FRED PRICES · CLAUDE BRAIN</div>
+      </div>
+    </div>
+    <div id="predict-run" class="hidden">
+      <div class="status-bar">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div class="clock" id="clock">—</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span class="label" id="phase-label">RUNNING</span>
+          <span class="timer" id="status-timer">0s</span>
+        </div>
+      </div>
+      <div id="run-status"></div>
+      <div id="run-content"></div>
+    </div>
+  </div>
+
+  <!-- TRACK RECORD TAB -->
+  <div id="tab-record" class="hidden">
+    <div class="card">
+      <h3>◢ PREDICTION TRACK RECORD</h3>
+      <p>Every prediction is logged and graded against the next day's actual WTI close. This is the bot's real, honest hit rate over time.</p>
+      <button class="btn-test" onclick="loadRecord()">↻ REFRESH RECORD</button>
+    </div>
+    <div id="record-content"><p style="color:#607080;font-size:12px;padding:20px;">Loading...</p></div>
+  </div>
+
+  <!-- SETUP TAB -->
+  <div id="tab-setup" class="hidden">
+    <div class="card">
+      <h3>◢ STEP 1 · TEST CONNECTIONS</h3>
+      <p>Verify both AI providers and the data anchor are wired up.</p>
+      <button class="btn-test" onclick="testAll()">🔌 TEST ALL SYSTEMS</button>
+      <div id="test-result"></div>
+    </div>
+    <div class="card">
+      <h3>◢ REQUIRED (core)</h3>
+      <p><b>ANTHROPIC_API_KEY</b> — Claude, the head actuary (synthesis)</p>
+      <p><b>GEMINI_API_KEY</b> — free at aistudio.google.com (research + voting)</p>
+    </div>
+    <div class="card">
+      <h3>◢ FREE VOTERS (recommended — more consensus)</h3>
+      <p><b>GROQ_API_KEY</b> — free at console.groq.com (fast Llama voter)</p>
+      <p><b>EIA_API_KEY</b> — free at eia.gov/opendata/register.php (crude + diesel official data)</p>
+      <p><b>TRADINGECONOMICS_API_KEY</b> — free tier at tradingeconomics.com/api (live crude/brent; format user:pass)</p>
+    </div>
+    <div class="card">
+      <h3>◢ OPTIONAL PAID VOTERS (off unless key added)</h3>
+      <p><b>OPENAI_API_KEY</b> — GPT-4o voter (paid)</p>
+      <p><b>XAI_API_KEY</b> — Grok voter, X/Twitter + Trump tracking (paid)</p>
+      <p style="color:#607080;">Leave these out to stay 100% free beyond Anthropic.</p>
+    </div>
+    <div class="card">
+      <h3>◢ OPTIONAL · PERSISTENT TRACK RECORD</h3>
+      <p><b>KV_REST_API_URL</b> + <b>KV_REST_API_TOKEN</b> — from Vercel KV (free). Without these, track record is per-session only.</p>
+    </div>
+    <div class="card">
+      <h3>◢ OPTIONAL · MODEL OVERRIDES</h3>
+      <p><b>CLAUDE_MODEL</b> (e.g. claude-opus-4) · <b>GEMINI_MODEL</b> · <b>GROQ_MODEL</b> · <b>OPENAI_MODEL</b> · <b>GROK_MODEL</b></p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== Agent definitions (run on Gemini, free) =====
+const STAGES = [
+  { id:"geopolitics", label:"WAR & TRUMP", icon:"⚔️",
+    prompt:`Search the web RIGHT NOW (use Google Search) for the very latest on oil-moving geopolitics. Focus: Iran/US/Israel conflict status, Strait of Hormuz (open? % capacity? transit counts?), any Trump statements on oil/Iran/OPEC in the last 48 hours (Truth Social, press), Red Sea/Houthi attacks, sanctions changes, summits this week. Report SPECIFIC events with dates + sources.
+Format:
+TOP_EVENT: [most market-moving]
+HORMUZ: [status + % capacity]
+TRUMP_LATEST: [statement + date]
+THIS_WEEK: [scheduled events with dates]
+IMPACT: BULLISH/BEARISH/MIXED + magnitude` },
+  { id:"fundamentals", label:"SUPPLY/DEMAND", icon:"⛽",
+    prompt:`Search the web RIGHT NOW (use Google Search) for: latest EIA weekly petroleum report (crude/gasoline/distillate build or draw + week), OPEC+ latest production decision, Baker Hughes rig count, China & India crude imports, VLCC tanker rates, refinery utilization, any production outages. Specific numbers + dates.
+Format:
+EIA_CRUDE: [build/draw + Mbbl + week]
+EIA_GASOLINE: [build/draw]
+OPEC: [mb/d + quota change]
+RIGS: [number + change]
+TANKERS: [rate]
+CHINA: [imports mb/d]
+BALANCE: TIGHT/BALANCED/OVERSUPPLIED` },
+  { id:"sentiment", label:"POSITIONING", icon:"📊",
+    prompt:`Search the web RIGHT NOW (use Google Search) for: latest CFTC COT report crude (managed money net long WTI & Brent + weekly change), options put/call skew, latest Goldman/JPM/Citi/Morgan Stanley oil price targets (this week), r/wallstreetbets & r/oil sentiment, USO/XLE ETF flows. Specific numbers.
+Format:
+COT_NET: [net long contracts + WoW]
+COT_READ: [crowded long/short/neutral]
+ANALYST_TARGETS: [bank: $target]
+RETAIL: [bullish/bearish]
+UNWIND_RISK: [what triggers it]` },
+  { id:"macro", label:"MACRO/TECH", icon:"📈",
+    prompt:`Search the web RIGHT NOW (use Google Search) for: Fed rate outlook (CME FedWatch odds), latest CPI + energy component, USD/DXY trend, China PMI/GDP, recession indicators, WTI technical support/resistance + 50/200-day moving averages, big options open-interest strikes. Specific numbers.
+Format:
+FED: [next move + odds]
+CPI: [YoY% + MoM%]
+DXY: [level + trend]
+RECESSION_PROB: [%]
+TECHNICALS: [support, resistance, 50DMA, 200DMA]
+KEY_LEVELS: [most important]` },
+  { id:"price_intraday", label:"INTRADAY PRICE", icon:"💲",
+    prompt:`Search the web RIGHT NOW (use Google Search) for the most recent intraday/live prices and today's session action: WTI crude front-month (current $ + today's open + day high/low + % change), Brent (same), natural gas, US national avg gasoline (AAA), today's settle if market closed. Cite source + time for each.
+Format:
+WTI_NOW: $X.XX (source, time)
+WTI_OPEN_TODAY: $X.XX
+WTI_DAY_RANGE: $X – $X
+WTI_SETTLE_IF_CLOSED: $X.XX
+BRENT_NOW: $X.XX
+GAS_PUMP: $X.XX (AAA)
+TODAY_MOVE: [what drove today]` },
+];
+
+const QUICK_PROMPT = `Search the web RIGHT NOW (use Google Search) and gather current oil-market intelligence: 1) Live WTI & Brent prices + today's open/high/low + US gas pump avg (cite source+time) 2) Iran/US/Hormuz war status + any Trump statements last 48h 3) Latest EIA inventory 4) OPEC+ decision 5) COT positioning + analyst targets 6) Fed/CPI/DXY 7) WTI technical support/resistance. Specific numbers, dates, sources.`;
+
+const PREDICTION_SYSTEM = `You are the world's top oil quant, ex-head of Goldman's oil desk, making DAILY OPEN/CLOSE calls for the WEEK. You receive: (A) an authoritative FRED price anchor + 30-day history, (B) live intelligence reports, (C) the exact current date and day-of-week. Synthesize into precision daily predictions.
+
+HARD RULES:
+1. The FRED anchor is ground truth for recent settled prices. Intraday search gives today's live action. If they conflict, trust intraday for "now", FRED for "last settle", and NOTE the discrepancy.
+2. Use ONLY numbers present in the inputs. If a field is genuinely absent, output null — NEVER invent a number.
+3. Account for crowded positioning (contrarian risk) and the single biggest binary catalyst.
+4. CALENDAR LOGIC: The user gives today's date and weekday. Produce a forecast for EACH of the 5 trading days of the CURRENT trading week (Monday through Friday). For days that have ALREADY happened this week, report the ACTUAL open/close if known from the data (mark as "actual"). For today and future days, forecast them. Oil futures don't trade over the weekend — for Saturday/Sunday, give "weekend_gap_risk" instead (what could gap the price at Sunday/Monday open).
+5. Always identify which weekday is "today" and which is the next trading day.
+
+Respond with ONLY valid JSON, no markdown/backticks.
+Schema:
+{
+  "today_date":"",
+  "today_weekday":"Monday|Tuesday|...",
+  "next_trading_day":"",
+  "data_quality_score":"1-10",
+  "wti_current":"","brent_current":"","gas_pump_current":"",
+  "todays_open":"","todays_close_or_now":"","todays_session_summary":"",
+  "week": {
+    "monday":   {"status":"actual|forecast","open":"$XX","close":"$XX","direction":"UP|DOWN|SIDEWAYS","confidence_pct":60,"note":""},
+    "tuesday":  {"status":"actual|forecast","open":"$XX","close":"$XX","direction":"UP|DOWN|SIDEWAYS","confidence_pct":60,"note":""},
+    "wednesday":{"status":"actual|forecast","open":"$XX","close":"$XX","direction":"UP|DOWN|SIDEWAYS","confidence_pct":60,"note":""},
+    "thursday": {"status":"actual|forecast","open":"$XX","close":"$XX","direction":"UP|DOWN|SIDEWAYS","confidence_pct":60,"note":""},
+    "friday":   {"status":"actual|forecast","open":"$XX","close":"$XX","direction":"UP|DOWN|SIDEWAYS","confidence_pct":60,"note":""}
+  },
+  "weekend_gap_risk":"what could move price between Friday close and Monday open",
+  "monday_open_call":"$XX",
+  "tomorrow_target":"$XX","tomorrow_range_low":"$XX","tomorrow_range_high":"$XX","tomorrow_direction":"UP|DOWN|SIDEWAYS","tomorrow_confidence_pct":60,"tomorrow_open_call":"$XX","tomorrow_close_call":"$XX","tomorrow_key_catalyst":"",
+  "trade_signal":"STRONG BUY|BUY|HOLD|SELL|STRONG SELL",
+  "key_support":"$XX","key_resistance":"$XX","stop_loss_suggestion":"$XX",
+  "supply_status":"OVERSUPPLIED|BALANCED|TIGHT|VERY TIGHT","demand_status":"WEAK|NEUTRAL|STRONG","positioning_risk":"LOW|MEDIUM|HIGH|EXTREME","geopolitical_score":7,
+  "primary_driver":"",
+  "bull_scenario":{"trigger":"","target":"$XX","probability":25},"base_scenario":{"trigger":"","target":"$XX","probability":50},"bear_scenario":{"trigger":"","target":"$XX","probability":25},
+  "black_swan":"","self_critique":"","contradictions_found":[],"data_gaps":[],
+  "key_factors":[{"factor":"","direction":"BULLISH|BEARISH|NEUTRAL","weight":"HIGH|MEDIUM|LOW","evidence":""}],
+  "watch_list":[],"weekly_outlook":"2-3 sentence outlook for the whole week","executive_summary":""
+}`;
+
+let state = { mode:"full", phase:"idle", logs:[], stageStatus:{}, stageData:{}, prediction:null, prevPrediction:null, anchor:null, votes:[], heretic:"", elapsed:0, startTime:null };
+
+const dirColor=(d)=>d==="UP"?"#5fffaf":d==="DOWN"?"#ff4d6d":"#ffb84d";
+const dirSign=(d)=>d==="UP"?"▲":d==="DOWN"?"▼":"→";
+const sigColor=(s)=>!s?"#888":s.includes("BUY")?"#5fffaf":s.includes("SELL")?"#ff4d6d":"#ffb84d";
+const riskColor=(r)=>({LOW:"#5fffaf",MEDIUM:"#ffb84d",HIGH:"#ff8855",EXTREME:"#ff4d6d"}[r]||"#888");
+const statColor=(s)=>{if(!s)return"#888";if(s.includes("TIGHT")||s.includes("STRONG")||s.includes("EXTREME"))return"#ff8855";if(s.includes("OVERSUPPLIED")||s.includes("WEAK"))return"#5fffaf";return"#ffb84d";};
+const esc=(s)=>String(s==null?"":s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+
+// ===== AI call with provider routing + auto-retry =====
+async function ai({ provider, system, user, useSearch=false, maxTokens=4000, temperature=0.3 }) {
+  const maxRetries = 4;
+  for (let attempt=0; attempt<=maxRetries; attempt++) {
+    const res = await fetch("/api/ai", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ provider, system, user, useSearch, maxTokens, temperature }),
+    });
+    if (res.ok) { const d = await res.json(); return d.text || ""; }
+    let err; try { err = await res.json(); } catch { err = { error:`HTTP ${res.status}` }; }
+    const msg = (err.error||"Unknown") + (err.details?`: ${err.details}`:"");
+    const rl = res.status===429 || msg.includes("429") || msg.includes("rate");
+    if (rl && attempt<maxRetries) {
+      const w = (err.retryAfter || (20 + attempt*15));
+      addLog(`⏳ ${provider} rate limit — waiting ${w}s, retry ${attempt+1}/${maxRetries}...`, "warn");
+      await new Promise(r=>setTimeout(r, w*1000)); continue;
+    }
+    throw new Error(msg);
+  }
+}
+
+function addLog(msg,type="info"){ state.logs.push({t:new Date().toLocaleTimeString("en-US",{hour12:false}),msg,type}); if(state.logs.length>120)state.logs.shift(); renderRunning(); }
+
+async function fetchAnchor() {
+  addLog("📡 Fetching FRED authoritative prices + Polymarket odds...", "start");
+  try {
+    const r = await fetch("/api/data");
+    if (!r.ok) { addLog("⚠ Anchor fetch failed — AI will rely on search only", "warn"); return null; }
+    const d = await r.json();
+    state.anchor = d;
+    const p = d.prices || {};
+    const bits = [];
+    if (p.wti) bits.push(`WTI ${p.wti.value} (${p.wti.date})`);
+    if (p.brent) bits.push(`Brent ${p.brent.value}`);
+    if (p.gas) bits.push(`Gas ${p.gas.value}`);
+    addLog(`✓ FRED anchor: ${bits.join(" · ")||"partial"}`, "ok");
+    if (d.polymarket) addLog(`✓ Polymarket: ${d.polymarket.length} oil-related markets`, "ok");
+    return d;
+  } catch(e){ addLog("⚠ Anchor error: "+e.message, "warn"); return null; }
+}
+
+async function runStage(stage) {
+  state.stageStatus[stage.id]="running";
+  addLog(`${stage.icon} [Gemini] ${stage.label}...`, "gem");
+  try {
+    const today = new Date().toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+    const text = await ai({ provider:"gemini", system:`Specialist oil intelligence analyst. Today is ${today}. Use Google Search aggressively. Specific numbers + sources.`, user:stage.prompt+`\n\nToday is ${today}.`, useSearch:true });
+    state.stageData[stage.id]=text; state.stageStatus[stage.id]="done";
+    addLog(`✓ ${stage.label} — ${text.length} chars`, "ok");
+    return { stage:stage.id, text };
+  } catch(e){ state.stageStatus[stage.id]="error"; addLog(`⚠ ${stage.label} — ${e.message}`, "warn"); return { stage:stage.id, text:`[FAILED: ${e.message}]` }; }
+}
+
+async function run() {
+  state.phase="running"; state.logs=[]; state.stageData={}; state.prediction=null;
+  state.stageStatus=Object.fromEntries(STAGES.map(s=>[s.id,"pending"]));
+  state.startTime=Date.now();
+  document.getElementById("predict-home").classList.add("hidden");
+  document.getElementById("predict-run").classList.remove("hidden");
+  startTimer(); renderRunning();
+
+  try {
+    const now = new Date();
+    const today = now.toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+    const weekday = now.toLocaleDateString("en-US",{weekday:"long"});
+    const anchor = await fetchAnchor();
+    let anchorStr = "No anchor available.";
+    if (anchor) {
+      const histStr = anchor.wtiHistory && anchor.wtiHistory.length
+        ? `\nWTI 30-DAY HISTORY (date:price): ${anchor.wtiHistory.map(h=>`${h.date}:${h.value}`).join(", ")}`
+        : "";
+      anchorStr = `AUTHORITATIVE FRED ANCHOR (recent settled prices):\n${JSON.stringify(anchor.prices,null,1)}${histStr}\nPOLYMARKET ODDS:\n${JSON.stringify(anchor.polymarket||"none",null,1)}\nGDELT GEOPOLITICAL TONE:\n${JSON.stringify(anchor.gdelt||"none",null,1)}`;
+    }
+
+    let briefing;
+    if (state.mode==="quick") {
+      addLog("◢ QUICK · 1 Gemini sweep", "start");
+      state.stageStatus.quick="running"; renderRunning();
+      const text = await ai({ provider:"gemini", system:`Elite oil analyst. Today is ${today}. Use Google Search. Specific numbers+sources.`, user:QUICK_PROMPT+`\n\nToday is ${today}.`, useSearch:true });
+      state.stageData.quick=text; state.stageStatus.quick="done";
+      addLog(`✓ Quick research — ${text.length} chars`, "ok");
+      briefing = `═══ OIL INTELLIGENCE ═══\n${text}`;
+    } else {
+      addLog("◢ FULL ELITE · 5 Gemini agents (free, parallel)", "start");
+      // Gemini free tier allows parallel — no Anthropic rate limit here
+      const results = await Promise.all(STAGES.map(s=>runStage(s)));
+      briefing = results.map(r=>{const st=STAGES.find(s=>s.id===r.stage);return `═══ ${st.icon} ${st.label} ═══\n${r.text}`;}).join("\n\n");
+    }
+
+    // ===== TIER 2: INDEPENDENT VOTING COUNCIL =====
+    // Each available free model makes an INDEPENDENT directional call from the same briefing.
+    state.phase="voting"; renderRunning();
+    addLog("🗳️ TIER 2 · Independent voting council...", "start");
+    const VOTE_PROMPT = `You are an independent oil analyst. Based ONLY on this intelligence, give your INDEPENDENT next-trading-day WTI call. Be decisive. Output STRICT JSON only:
+{"direction":"UP|DOWN|SIDEWAYS","target":"$XX.XX","confidence_pct":NN,"one_line_reason":"..."}
+
+INTELLIGENCE:
+${anchorStr}
+
+${briefing}`;
+    const voterDefs = [
+      { id:"gemini", label:"Gemini", provider:"gemini" },
+      { id:"groq",   label:"Groq/Llama", provider:"groq" },
+      { id:"openai", label:"GPT-4o", provider:"openai" },
+      { id:"grok",   label:"Grok", provider:"grok" },
+    ];
+    const votes = [];
+    await Promise.all(voterDefs.map(async v => {
+      try {
+        const txt = await ai({ provider:v.provider, system:"Decisive independent oil analyst. STRICT JSON only.", user:VOTE_PROMPT, useSearch:false, maxTokens:500, temperature:0.4 });
+        const m = txt.match(/\{[\s\S]*\}/);
+        if (m) { const vote = JSON.parse(m[0]); vote._voter = v.label; votes.push(vote); addLog(`  🗳️ ${v.label}: ${vote.direction} ${vote.target} (${vote.confidence_pct}%)`, "gem"); }
+      } catch(e) {
+        // provider not configured or failed — skip silently unless it's the only one
+        if (!String(e.message).includes("not configured")) addLog(`  ⚠ ${v.label} vote skipped: ${e.message.slice(0,60)}`, "info");
+      }
+    }));
+    state.votes = votes;
+    if (votes.length) {
+      const dirCounts = votes.reduce((a,v)=>{a[v.direction]=(a[v.direction]||0)+1;return a;},{});
+      const consensus = Object.entries(dirCounts).sort((a,b)=>b[1]-a[1])[0];
+      addLog(`✓ Council: ${votes.length} votes · consensus ${consensus[0]} (${consensus[1]}/${votes.length})`, "ok");
+    } else {
+      addLog("⚠ No council votes (only core providers configured) — proceeding to actuary", "warn");
+    }
+
+    // ===== TIER 3: ADVERSARIAL HERETIC =====
+    addLog("😈 TIER 3 · Heretic challenges the consensus...", "start");
+    let heretic = "";
+    try {
+      const voteSummary = votes.length ? votes.map(v=>`${v._voter}: ${v.direction} ${v.target} — ${v.one_line_reason}`).join("\n") : "No prior votes.";
+      heretic = await ai({ provider: votes.find(v=>v._voter==="Groq/Llama")?"groq":"gemini",
+        system:"You are 'The Heretic' — a ruthless contrarian risk analyst. Your ONLY job is to argue AGAINST the consensus and expose what everyone is missing.",
+        user:`The council's oil calls:\n${voteSummary}\n\nIntelligence:\n${briefing.slice(0,4000)}\n\nIn 4-5 sentences: what is the consensus getting WRONG? What overlooked catalyst could flip this? Where is the crowded-positioning risk? Be specific and aggressive.`,
+        useSearch:false, maxTokens:600, temperature:0.6 });
+      state.heretic = heretic;
+      addLog("✓ Heretic delivered counter-thesis", "ok");
+    } catch(e){ addLog("⚠ Heretic skipped: "+e.message.slice(0,50), "info"); }
+
+    // ===== TIER 4: HEAD ACTUARY (CLAUDE) ADJUDICATES =====
+    state.phase="synthesizing"; renderRunning();
+    addLog("🧠 TIER 4 · Claude (head actuary) adjudicates all inputs...", "start");
+    const councilStr = votes.length ? `\n\nINDEPENDENT VOTING COUNCIL:\n${votes.map(v=>`- ${v._voter}: ${v.direction} ${v.target} @ ${v.confidence_pct}% — ${v.one_line_reason}`).join("\n")}` : "";
+    const hereticStr = heretic ? `\n\nADVERSARIAL HERETIC COUNTER-THESIS (weigh this seriously):\n${heretic}` : "";
+    const raw = await ai({ provider:"claude", system:PREDICTION_SYSTEM, user:`TODAY IS ${today} (${weekday}).\n\n${anchorStr}\n\nLIVE INTELLIGENCE:\n\n${briefing}${councilStr}${hereticStr}\n\nAs head actuary, weigh the council consensus AND the Heretic's counter-thesis. Where the council crowds one way but the Heretic exposes real risk, reflect that in calibrated (not overconfident) confidence. Produce the full Monday-Friday forecast for THIS week. Days already past = actual if known. Today and future = forecast.`, useSearch:false, maxTokens:4500 });
+
+    let jt=raw; const m=raw.match(/\{[\s\S]*\}/); if(m)jt=m[0]; jt=jt.replace(/```json|```/g,"").trim();
+    let parsed;
+    try { parsed=JSON.parse(jt); }
+    catch(e){ addLog("⚠ JSON retry via Claude...", "warn"); const fx=await ai({provider:"claude",system:"Fix into valid JSON. Output ONLY the JSON object.",user:jt,maxTokens:4000}); const fm=fx.match(/\{[\s\S]*\}/); parsed=JSON.parse(fm?fm[0]:fx.replace(/```json|```/g,"").trim()); }
+
+    // Compute diff vs last run (stored in localStorage)
+    try {
+      const prevRaw = localStorage.getItem("oil_oracle_last_prediction");
+      if (prevRaw) state.prevPrediction = JSON.parse(prevRaw);
+      localStorage.setItem("oil_oracle_last_prediction", JSON.stringify({ p: parsed, at: new Date().toISOString() }));
+    } catch(e) { /* localStorage may be unavailable */ }
+
+    state.prediction=parsed; state.phase="done";
+    addLog(`✓ PREDICTION COMPLETE — ${parsed.tomorrow_confidence_pct}% confidence · quality ${parsed.data_quality_score}/10`, "ok");
+
+    // auto-log to ledger
+    try {
+      await fetch("/api/ledger",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"save",prediction:parsed})});
+      addLog("📝 Logged to track record", "ok");
+    } catch(e){ addLog("⚠ Could not log to track record: "+e.message, "warn"); }
+
+    stopTimer(); renderResults();
+  } catch(e){ state.phase="error"; addLog(`✗ FATAL: ${e.message}`, "err"); stopTimer(); renderError(e.message); }
+}
+
+let timer=null;
+function startTimer(){ timer=setInterval(()=>{state.elapsed=Math.floor((Date.now()-state.startTime)/1000);const t=document.getElementById("status-timer");if(t)t.textContent=state.elapsed+"s";},250);}
+function stopTimer(){ clearInterval(timer); }
+
+function renderRunning(){
+  if(state.phase==="done"||state.phase==="error")return;
+  const pl=document.getElementById("phase-label"); if(pl)pl.textContent = state.phase==="synthesizing"?"ACTUARY ADJUDICATING":state.phase==="voting"?"COUNCIL VOTING":"GEMINI RESEARCHING";
+  const isQuick=state.mode==="quick";
+  const show = isQuick?[{id:"quick",label:"UNIFIED RESEARCH",icon:"🔬"}]:STAGES;
+  const html = `
+    <div class="agent-grid">
+      ${show.map(s=>{const st=state.stageStatus[s.id]||"pending";return `<div class="agent ${st}"><div class="agent-row"><div><div class="name">${s.icon} ${s.label}</div><div class="state">${st}</div></div><div style="font-size:14px;">${st==="done"?"✓":st==="error"?"✗":st==="running"?'<span class="spin">◌</span>':"○"}</div></div></div>`;}).join("")}
+    </div>
+    <div class="log" id="log-box">
+      ${state.logs.map(l=>`<div class="${l.type==="ok"?"ok":l.type==="err"?"err":l.type==="warn"?"warn":l.type==="start"?"start":l.type==="gem"?"gem":"info"}"><span class="time">${l.t}</span>${esc(l.msg)||"&nbsp;"}</div>`).join("")}
+      <div style="color:#303840;">▎<span class="blink">_</span></div>
+    </div>`;
+  document.getElementById("run-status").innerHTML=html;
+  const lb=document.getElementById("log-box"); if(lb)lb.scrollTop=lb.scrollHeight;
+}
+
+function renderError(msg){
+  document.getElementById("run-status").innerHTML="";
+  document.getElementById("run-content").innerHTML=`<div class="error-box"><div class="lb">✗ PIPELINE FAILURE</div><div class="ms">${esc(msg)}</div><button class="btn-secondary" onclick="run()">↻ RETRY</button><button class="btn-secondary" onclick="goHome()">⚙ HOME</button></div>`;
+}
+
+function renderResults(){
+  const p=state.prediction; if(!p)return;
+  document.getElementById("run-status").innerHTML="";
+  const sc=sigColor(p.trade_signal);
+  const anchorNote=(k)=>{const a=state.anchor&&state.anchor.prices&&state.anchor.prices[k];return a?`FRED ${a.value} (${a.date})`:"";};
+
+  // ---- DIFF vs last run ----
+  let diffHtml = "";
+  if (state.prevPrediction && state.prevPrediction.p) {
+    const prev = state.prevPrediction.p;
+    const changes = [];
+    const cmp = (label, oldV, newV) => {
+      if (oldV != null && newV != null && String(oldV) !== String(newV)) changes.push(`${label}: ${esc(oldV)} → <b style="color:#fff;">${esc(newV)}</b>`);
+    };
+    cmp("Signal", prev.trade_signal, p.trade_signal);
+    cmp("Tomorrow target", prev.tomorrow_target, p.tomorrow_target);
+    cmp("Tomorrow direction", prev.tomorrow_direction, p.tomorrow_direction);
+    cmp("WTI now", prev.wti_current, p.wti_current);
+    cmp("Geo risk", prev.geopolitical_score, p.geopolitical_score);
+    cmp("Primary driver", prev.primary_driver, p.primary_driver);
+    const ago = state.prevPrediction.at ? new Date(state.prevPrediction.at).toLocaleString("en-US",{dateStyle:"short",timeStyle:"short"}) : "last run";
+    diffHtml = `<div class="mbox" style="border:1px solid rgba(95,184,255,0.3);background:rgba(95,184,255,0.05);">
+      <div class="section-label" style="color:#5fb8ff;margin:0 0 8px;">◤ WHAT CHANGED SINCE ${esc(ago)}</div>
+      ${changes.length ? changes.map(c=>`<div style="font-size:11px;color:#90a8b8;line-height:1.7;">• ${c}</div>`).join("") : `<div style="font-size:11px;color:#607080;">No material changes since last run.</div>`}
+    </div>`;
+  }
+
+  // ---- Weekly calendar ----
+  const days = ["monday","tuesday","wednesday","thursday","friday"];
+  const dayLabels = {monday:"MON",tuesday:"TUE",wednesday:"WED",thursday:"THU",friday:"FRI"};
+  const todayWd = (p.today_weekday||"").toLowerCase();
+  const wk = p.week || {};
+  const weekHtml = `<div class="grid" style="grid-template-columns:repeat(5,1fr);gap:8px;">${days.map(d=>{
+    const dd = wk[d] || {};
+    const c = dirColor((dd.direction||"").toUpperCase());
+    const isToday = d===todayWd;
+    const isActual = dd.status==="actual";
+    return `<div class="fcard" style="border:${isToday?2:1}px solid ${c}${isToday?60:25};background:linear-gradient(135deg,${c}${isToday?12:6},transparent);padding:12px;">
+      ${isToday?`<div class="ptag" style="background:${c};">TODAY</div>`:isActual?`<div class="ptag" style="background:#5fb8ff;">ACTUAL</div>`:""}
+      <div class="day" style="margin-bottom:6px;">${dayLabels[d]}</div>
+      <div style="font-size:18px;font-weight:800;color:${c};line-height:1;">${dirSign((dd.direction||"").toUpperCase())} ${esc(dd.close||"—")}</div>
+      <div style="font-size:9px;color:#607080;margin-top:4px;">O: ${esc(dd.open||"—")}</div>
+      ${dd.confidence_pct?`<div style="font-size:9px;color:${c};margin-top:4px;">${dd.confidence_pct}%</div>`:""}
+      ${dd.note?`<div style="font-size:9px;color:#7080a0;margin-top:6px;line-height:1.4;">${esc(dd.note.slice(0,60))}</div>`:""}
+    </div>`;
+  }).join("")}</div>`;
+
+  // ---- Price chart (SVG from FRED history) ----
+  let chartHtml = "";
+  const hist = state.anchor && state.anchor.wtiHistory;
+  if (hist && hist.length > 2) {
+    const w = 100, h = 30;
+    const vals = hist.map(x=>x.value);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const range = max - min || 1;
+    const pts = hist.map((x,i)=>{
+      const px = (i/(hist.length-1))*w;
+      const py = h - ((x.value-min)/range)*h;
+      return `${px.toFixed(1)},${py.toFixed(1)}`;
+    }).join(" ");
+    const last = vals[vals.length-1], first = vals[0];
+    const up = last >= first;
+    const lc = up ? "#5fffaf" : "#ff4d6d";
+    chartHtml = `<div class="mbox" style="border:1px solid rgba(255,184,77,0.2);background:rgba(0,0,0,0.3);">
+      <div class="section-label" style="color:#ffb84d;margin:0 0 10px;">◤ WTI 30-DAY TREND (FRED)</div>
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:120px;display:block;">
+        <polyline points="${pts}" fill="none" stroke="${lc}" stroke-width="0.6" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:#607080;margin-top:6px;">
+        <span>${esc(hist[0].date)} · $${first}</span>
+        <span style="color:${lc};">${up?"▲":"▼"} $${(last-first).toFixed(2)} (${((last-first)/first*100).toFixed(1)}%)</span>
+        <span>${esc(hist[hist.length-1].date)} · $${last}</span>
+      </div>
+    </div>`;
+  }
+
+  const forecasts=[
+    {label:"TOMORROW",target:p.tomorrow_target,dir:p.tomorrow_direction,conf:p.tomorrow_confidence_pct,range:`${p.tomorrow_range_low} – ${p.tomorrow_range_high}`,cat:p.tomorrow_key_catalyst,big:true,extra:`Open ${p.tomorrow_open_call||"—"} · Close ${p.tomorrow_close_call||"—"}`},
+  ];
+  const prices=[
+    {label:"WTI NOW",value:p.wti_current,c:"#ffb84d",anchor:anchorNote("wti")},
+    {label:"BRENT",value:p.brent_current,c:"#5fb8ff",anchor:anchorNote("brent")},
+    {label:"TODAY OPEN",value:p.todays_open,c:"#a855f7"},
+    {label:"NOW/CLOSE",value:p.todays_close_or_now,c:"#5fffaf"},
+    {label:"GAS PUMP",value:p.gas_pump_current,c:"#ff8855",anchor:anchorNote("gas")},
+  ];
+  const statuses=[["SUPPLY",p.supply_status,statColor(p.supply_status)],["DEMAND",p.demand_status,statColor(p.demand_status)],["POS RISK",p.positioning_risk,riskColor(p.positioning_risk)],["GEO RISK",`${p.geopolitical_score}/10`,p.geopolitical_score>=7?"#ff4d6d":p.geopolitical_score>=5?"#ff8855":"#5fffaf"]];
+  const scen=[{nm:"BEAR",d:p.bear_scenario,c:"#ff4d6d",i:"▽"},{nm:"BASE",d:p.base_scenario,c:"#ffb84d",i:"◇"},{nm:"BULL",d:p.bull_scenario,c:"#5fffaf",i:"△"}];
+
+  // ---- Council votes + Heretic ----
+  let councilHtml = "";
+  if (state.votes && state.votes.length) {
+    const dirCounts = state.votes.reduce((a,v)=>{a[v.direction]=(a[v.direction]||0)+1;return a;},{});
+    councilHtml = `<div class="mbox" style="border:1px solid rgba(95,184,255,0.25);background:rgba(95,184,255,0.04);">
+      <div class="section-label" style="color:#5fb8ff;margin:0 0 10px;">◤ VOTING COUNCIL · ${state.votes.length} INDEPENDENT MODELS</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        ${Object.entries(dirCounts).map(([d,n])=>`<span style="padding:3px 10px;border:1px solid ${dirColor(d)}40;color:${dirColor(d)};font-size:11px;">${dirSign(d)} ${d}: ${n}</span>`).join("")}
+      </div>
+      ${state.votes.map(v=>`<div style="font-size:11px;color:#90a8b8;line-height:1.7;padding:4px 0;border-bottom:1px solid rgba(80,100,120,0.12);"><b style="color:#c4ccd4;">${esc(v._voter)}</b> <span style="color:${dirColor(v.direction)};">${dirSign(v.direction)} ${esc(v.target)}</span> <span style="color:#607080;">@ ${esc(v.confidence_pct)}%</span> — ${esc(v.one_line_reason)}</div>`).join("")}
+    </div>`;
+  }
+  let hereticHtml = "";
+  if (state.heretic) {
+    hereticHtml = `<div class="mbox" style="border:1px solid rgba(255,77,109,0.3);background:rgba(255,77,109,0.05);">
+      <div class="section-label" style="color:#ff4d6d;margin:0 0 8px;">😈 THE HERETIC · ADVERSARIAL COUNTER-THESIS</div>
+      <p style="font-size:12px;color:#c0a0a8;line-height:1.7;">${esc(state.heretic)}</p>
+    </div>`;
+  }
+
+  const html=`<div class="results">
+    <div class="signal-banner" style="background:linear-gradient(135deg,${sc}12,transparent 70%);border:2px solid ${sc}40;">
+      <div class="quality">DATA QUALITY ${esc(p.data_quality_score)}/10</div>
+      <div class="signal-label">AI TRADE SIGNAL · ${esc(p.today_weekday||"")} ${esc(p.today_date||"")}</div>
+      <div class="signal-value" style="color:${sc};">${esc(p.trade_signal)}</div>
+      <div class="driver">${esc(p.primary_driver)}</div>
+      <div class="levels"><span>SUPPORT <span style="color:#ff4d6d;">${esc(p.key_support)}</span></span><span>RESIST <span style="color:#5fffaf;">${esc(p.key_resistance)}</span></span><span>STOP <span style="color:#ffb84d;">${esc(p.stop_loss_suggestion)}</span></span></div>
+    </div>
+    ${diffHtml}
+    ${chartHtml}
+    ${councilHtml}
+    ${hereticHtml}
+    ${p.todays_session_summary?`<div class="mbox" style="border:1px solid rgba(95,184,255,0.2);background:rgba(95,184,255,0.04);"><div class="section-label" style="color:#5fb8ff;margin:0 0 8px;">◤ TODAY'S SESSION</div><p style="font-size:12px;color:#90a8b8;line-height:1.6;">${esc(p.todays_session_summary)}</p></div>`:""}
+    <div class="section-label">◤ LIVE MARKET (FRED-anchored)</div>
+    <div class="grid g-prices">${prices.map(pr=>`<div class="pcard" style="border:1px solid ${pr.c}25;background:linear-gradient(145deg,${pr.c}08,transparent);"><div class="lbl">${pr.label}</div><div class="val" style="color:${pr.c};">${esc(pr.value||"—")}</div>${pr.anchor?`<div class="anchor">✓ ${esc(pr.anchor)}</div>`:""}</div>`).join("")}</div>
+    <div class="section-label">◤ FULL WEEK · MON–FRI OPEN/CLOSE</div>
+    ${weekHtml}
+    ${p.weekend_gap_risk?`<div class="mbox" style="border:1px solid rgba(168,85,247,0.2);background:rgba(168,85,247,0.04);margin-top:10px;"><div class="section-label" style="color:#a855f7;margin:0 0 8px;">◤ WEEKEND GAP RISK</div><p style="font-size:12px;color:#a0a0c0;line-height:1.6;">${esc(p.weekend_gap_risk)}${p.monday_open_call?` · Monday open call: <b>${esc(p.monday_open_call)}</b>`:""}</p></div>`:""}
+    ${p.weekly_outlook?`<div class="mbox" style="border:1px solid rgba(255,184,77,0.2);background:rgba(255,184,77,0.04);"><div class="section-label" style="color:#ffb84d;margin:0 0 8px;">◤ WEEKLY OUTLOOK</div><p style="font-size:12px;color:#c0b090;line-height:1.6;">${esc(p.weekly_outlook)}</p></div>`:""}
+    <div class="section-label">◤ TOMORROW DETAIL</div>
+    <div class="grid g-fc">${forecasts.map(f=>{const c=dirColor(f.dir);return `<div class="fcard primary" style="border:2px solid ${c}50;background:linear-gradient(135deg,${c}10,transparent);"><div class="ptag" style="background:${c};">PRIMARY · ${esc(p.next_trading_day||"NEXT")}</div><div class="day">${f.label}</div><div class="price" style="color:${c};">${dirSign(f.dir)} ${esc(f.target)}</div>${f.range?`<div class="range">Range: ${esc(f.range)}</div>`:""}${f.extra?`<div class="range" style="color:#90a8b8;">${esc(f.extra)}</div>`:""}<div class="cr"><div class="cb"><div class="cf" style="width:${f.conf}%;background:${c};box-shadow:0 0 8px ${c};"></div></div><span class="ct" style="color:${c};">${f.conf}%</span></div>${f.cat?`<div class="cat">🎯 ${esc(f.cat)}</div>`:""}</div>`;}).join("")}</div>
+    <div class="grid g-status">${statuses.map(([l,v,c])=>`<div class="scard" style="border:1px solid ${c}30;background:${c}06;"><div class="lbl">${l}</div><div class="val" style="color:${c};">${esc(v)}</div></div>`).join("")}</div>
+    <div class="section-label">◤ SCENARIO MATRIX</div>
+    <div class="grid g-scen">${scen.map(s=>`<div class="sccard" style="border:1px solid ${s.c}25;background:${s.c}06;"><div class="top"><span class="nm" style="color:${s.c};">${s.i} ${s.nm}</span><span class="pr" style="color:${s.c};">${esc(s.d&&s.d.probability)}%</span></div><div class="tg" style="color:${s.c};">${esc(s.d&&s.d.target)}</div><div class="tr"><span style="color:#506070;">TRIGGER:</span> ${esc(s.d&&s.d.trigger)}</div></div>`).join("")}</div>
+    <div class="section-label" style="color:#5fb8ff;">◤ FACTOR ANALYSIS</div>
+    <div class="factors">${(p.key_factors||[]).map((f,i)=>{const dc=f.direction==="BULLISH"?"#5fffaf":f.direction==="BEARISH"?"#ff4d6d":"#ffb84d";const wc=f.weight==="HIGH"?"#ff6633":f.weight==="MEDIUM"?"#ffb84d":"#506070";return `<div class="factor"><span class="num">0${i+1}</span><div><div class="fn">${esc(f.factor)}</div><div class="ev">${esc(f.evidence)}</div></div><span class="wt" style="color:${wc};border-color:${wc}40;">${esc(f.weight)}</span><span class="dr" style="color:${dc};">${f.direction==="BULLISH"?"▲":f.direction==="BEARISH"?"▼":"→"}</span></div>`;}).join("")}</div>
+    ${p.watch_list&&p.watch_list.length?`<div class="watch"><div class="watch-label">◤ WATCH LIST</div>${p.watch_list.map(w=>`<div class="witem"><span style="color:#ffb84d;">◆</span><span>${esc(w)}</span></div>`).join("")}</div>`:""}
+    ${p.self_critique?`<div class="mbox crit"><div class="crit-label">◤ SELF-CRITIQUE</div><p>${esc(p.self_critique)}</p></div>`:""}
+    <div class="swan"><div class="swan-label">⚠ BLACK SWAN</div><p>${esc(p.black_swan)}</p></div>
+    <div class="summary"><div class="summary-label">◤ EXECUTIVE SYNTHESIS</div><p>${esc(p.executive_summary)}</p></div>
+    <div class="section-label" style="color:#506070;">◤ RAW INTELLIGENCE FEEDS</div>
+    ${Object.entries(state.stageData).map(([id,data])=>{const st=STAGES.find(s=>s.id===id)||{icon:"🔬",label:"RESEARCH"};return `<details><summary><span>${st.icon} ${st.label}</span><span style="font-size:9px;color:#404850;">${data.length} chars</span></summary><pre>${esc(data)}</pre></details>`;}).join("")}
+    <div class="footer">
+      <div class="disclaimer">⚠ AI-GENERATED · NOT FINANCIAL ADVICE · GEMINI RESEARCH + FRED ANCHOR + GDELT + CLAUDE SYNTHESIS<br>This prediction was auto-logged. Check the Track Record tab tomorrow to see how it scored.</div>
+      <button class="btn-secondary" onclick="run()">↻ RUN AGAIN</button>
+      <button class="btn-secondary" onclick="goHome()">⚙ HOME</button>
+    </div>
+  </div>`;
+  document.getElementById("run-content").innerHTML=html;
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function goHome(){ state.phase="idle"; document.getElementById("predict-run").classList.add("hidden"); document.getElementById("run-content").innerHTML=""; document.getElementById("run-status").innerHTML=""; document.getElementById("predict-home").classList.remove("hidden"); }
+
+// ===== Track Record =====
+async function loadRecord(){
+  const el=document.getElementById("record-content");
+  el.innerHTML=`<p style="color:#607080;font-size:12px;padding:20px;">Loading...</p>`;
+  try {
+    const r=await fetch("/api/ledger"); const d=await r.json();
+    const s=d.stats||{};
+    let statsHtml = `<div class="stat-row">`;
+    if (s.directionAccuracy!=null) statsHtml += `<div class="stat-big"><div class="n">${s.directionAccuracy}%</div><div class="l">DIRECTION ACCURACY</div></div>`;
+    if (s.rangeAccuracy!=null) statsHtml += `<div class="stat-big"><div class="n">${s.rangeAccuracy}%</div><div class="l">CLOSE IN RANGE</div></div>`;
+    statsHtml += `<div class="stat-big"><div class="n">${s.graded||0}</div><div class="l">GRADED CALLS</div></div>`;
+    statsHtml += `<div class="stat-big"><div class="n">${s.totalPredictions||0}</div><div class="l">TOTAL LOGGED</div></div>`;
+    statsHtml += `</div>`;
+    if (s.message) statsHtml += `<p style="color:#ffb84d;font-size:11px;margin-bottom:16px;">${esc(s.message)}</p>`;
+    if (!d.kvConfigured) statsHtml += `<p style="color:#607080;font-size:10px;margin-bottom:16px;">⚠ Vercel KV not configured — track record resets on server restart. Add KV_REST_API_URL + KV_REST_API_TOKEN for permanent history.</p>`;
+
+    let rows = `<div class="pred-row head"><span>DATE</span><span>SIGNAL / DRIVER</span><span>CALL</span><span>ACTUAL</span><span>RESULT</span></div>`;
+    (d.predictions||[]).forEach(p=>{
+      let result='<span class="pending">PENDING</span>', actual='';
+      if (p.actualClose!=null) {
+        const prev=parseFloat(String(p.wtiCurrent).replace(/[^0-9.]/g,''));
+        const act=parseFloat(p.actualClose);
+        const ad=act>prev?"UP":act<prev?"DOWN":"SIDEWAYS";
+        const hit=(p.tomorrowDirection||"").toUpperCase()===ad;
+        result=hit?'<span class="hit">✓ HIT</span>':'<span class="miss">✗ MISS</span>';
+        actual=`$${act}`;
+      } else {
+        actual=`<input class="grade-input" id="grade-${p.predictionDate}" placeholder="$close" /><button class="btn-secondary" style="padding:4px 8px;margin:2px;font-size:9px;" onclick="gradeOne('${p.predictionDate}')">SET</button>`;
+      }
+      rows += `<div class="pred-row"><span style="color:#90a8b8;">${esc(p.predictionDate)}</span><span><b style="color:${sigColor(p.tradeSignal)};">${esc(p.tradeSignal)}</b> ${dirSign((p.tomorrowDirection||"").toUpperCase())} ${esc(p.tomorrowTarget)}<br><span style="color:#607080;font-size:10px;">${esc((p.primaryDriver||"").slice(0,80))}</span></span><span style="color:#a0a8b0;">${esc(p.tomorrowTarget)}</span><span>${actual}</span><span>${result}</span></div>`;
+    });
+    el.innerHTML = statsHtml + `<div style="border:1px solid rgba(80,100,120,0.2);background:rgba(0,0,0,0.3);padding:8px 14px;">${rows}</div>`;
+  } catch(e){ el.innerHTML=`<p style="color:#ff4d6d;font-size:12px;padding:20px;">Error loading record: ${esc(e.message)}</p>`; }
+}
+
+async function gradeOne(date){
+  const inp=document.getElementById(`grade-${date}`); if(!inp||!inp.value)return;
+  const val=parseFloat(inp.value.replace(/[^0-9.]/g,''));
+  try { await fetch("/api/ledger",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"grade",date,actualClose:val})}); loadRecord(); }
+  catch(e){ alert("Grade failed: "+e.message); }
+}
+
+// ===== Test =====
+async function testAll(){
+  const el=document.getElementById("test-result");
+  el.className="test-result test-warn"; el.textContent="Testing all systems...";
+  let out=[];
+  try {
+    const ai=await (await fetch("/api/ai")).json();
+    const pv=ai.providers||{};
+    out.push(`◢ AI PROVIDERS:`);
+    Object.entries(pv).forEach(([name,info])=>{ out.push(`   ${info.configured?"✓":"○"} ${name} — ${info.role}`); });
+    out.push(ai.message);
+  } catch(e){ out.push("AI Gateway: ✗ "+e.message); }
+  try {
+    const dt=await (await fetch("/api/data")).json();
+    const f=dt.prices||{}; const got=Object.keys(f).filter(k=>f[k]).length;
+    out.push(`◢ DATA ANCHORS:`);
+    out.push(`   FRED: ${got}/6 series (incl. diesel ${f.diesel?"✓":"○"}, heating oil ${f.heatingoil?"✓":"○"})`);
+    const eia=dt.anchors&&dt.anchors.eia; out.push(`   EIA: ${typeof eia==="object"?"✓ connected":"○ add EIA_API_KEY"}`);
+    const te=dt.anchors&&dt.anchors.tradingEconomics; out.push(`   TradingEconomics: ${Array.isArray(te)?"✓ "+te.length+" commodities":"○ add TRADINGECONOMICS_API_KEY"}`);
+    out.push(`   Polymarket: ${dt.polymarket?"✓ "+dt.polymarket.length:"○"} · GDELT: ${dt.gdelt?"✓":"○"}`);
+  } catch(e){ out.push("Data Anchor: ✗ "+e.message); }
+  try {
+    const lg=await (await fetch("/api/ledger")).json();
+    out.push(`◢ LEDGER: ${lg.kvConfigured?"✓ KV persistent":"○ in-memory (add KV)"} · ${lg.stats.totalPredictions||0} logged`);
+  } catch(e){ out.push("Ledger: ✗ "+e.message); }
+  const allOk = !out.some(l=>l.includes("✗"));
+  el.className = allOk?"test-result test-ok":"test-result test-warn";
+  el.innerHTML = out.map(esc).join("<br>");
+}
+
+// ===== Tabs =====
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  t.classList.add("active");
+  ["predict","record","setup"].forEach(name=>{document.getElementById("tab-"+name).classList.toggle("hidden",name!==t.dataset.tab);});
+  if(t.dataset.tab==="record")loadRecord();
+}));
+document.querySelectorAll(".mode").forEach(m=>m.addEventListener("click",()=>{document.querySelectorAll(".mode").forEach(x=>x.classList.remove("selected"));m.classList.add("selected");state.mode=m.dataset.mode;}));
+document.getElementById("launch-btn").addEventListener("click",run);
+setInterval(()=>{const c=document.getElementById("clock");if(c)c.textContent=new Date().toLocaleString("en-US",{dateStyle:"medium",timeStyle:"short"});},1000);
+</script>
+</body>
+</html>
