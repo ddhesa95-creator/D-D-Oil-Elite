@@ -210,6 +210,7 @@
       <h3>◢ STEP 1 · TEST CONNECTIONS</h3>
       <p>Verify both AI providers and the data anchor are wired up.</p>
       <button class="btn-test" onclick="testAll()">🔌 TEST ALL SYSTEMS</button>
+      <button class="btn-secondary" onclick="resetGemini()" style="margin-left:8px;">↻ RE-ENABLE GEMINI</button>
       <div id="test-result"></div>
     </div>
     <div class="card">
@@ -350,11 +351,16 @@ async function ai({ provider, system, user, useSearch=false, maxTokens=4000, tem
     if (res.ok) { const d = await res.json(); return d.text || ""; }
     let err; try { err = await res.json(); } catch { err = { error:`HTTP ${res.status}` }; }
     const msg = (err.error||"Unknown") + (err.details?`: ${err.details}`:"");
-    const rl = res.status===429 || msg.includes("429") || msg.includes("rate") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota");
-    if (rl && attempt<maxRetries) {
-      // Gemini free tier resets per-minute; wait longer for it specifically
-      const baseWait = provider==="gemini" ? 30 : 15;
-      const w = (err.retryAfter || (baseWait + attempt*20));
+    // Distinguish HARD quota (limit:0, give up instantly) from soft rate-limit (retry)
+    const isQuotaZero = msg.includes("limit: 0") || msg.includes('"limit": 0') || msg.includes("free_tier") || msg.includes("billing");
+    const isRateLimit = res.status===429 || msg.includes("429") || msg.includes("rate") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota");
+    if (isQuotaZero) {
+      // No free-tier quota at all — retrying is pointless, fail immediately
+      throw new Error(msg);
+    }
+    if (isRateLimit && attempt<maxRetries) {
+      const baseWait = provider==="gemini" ? 20 : 12;
+      const w = (err.retryAfter || (baseWait + attempt*15));
       addLog(`⏳ ${provider} rate limit — waiting ${w}s, retry ${attempt+1}/${maxRetries}...`, "warn");
       await new Promise(r=>setTimeout(r, w*1000)); continue;
     }
@@ -402,15 +408,16 @@ async function fetchAnchor() {
 
 // Smart research: try Gemini (free, web search); if it fails, fall back to Claude's web search
 async function smartResearch({ system, user }) {
-  // Skip Gemini entirely if we've already learned it's dead this session
+  // Skip Gemini entirely if we've already learned it's dead (this run or a previous one)
   if (!state.geminiDead) {
     try {
       return { text: await ai({ provider:"gemini", system, user, useSearch:true }), via:"Gemini" };
     } catch(e) {
       const msg = String(e.message||"");
-      if (msg.includes("429") || msg.includes("quota") || msg.includes("limit: 0") || msg.includes("RESOURCE_EXHAUSTED")) {
-        state.geminiDead = true; // stop trying Gemini for the rest of this run
-        addLog("⚠ Gemini quota unavailable — switching research to Claude web search", "warn");
+      if (msg.includes("429") || msg.includes("quota") || msg.includes("limit: 0") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("billing") || msg.includes("free_tier")) {
+        state.geminiDead = true;
+        try { localStorage.setItem("oil_oracle_gemini_dead", "1"); } catch(e2){}
+        addLog("⚠ Gemini has no free quota — switched to Claude web search (will skip Gemini from now on)", "warn");
       } else {
         throw e; // a real error, not quota — surface it
       }
@@ -433,7 +440,9 @@ async function runStage(stage) {
 }
 
 async function run() {
-  state.phase="running"; state.logs=[]; state.stageData={}; state.prediction=null; state.geminiDead=false;
+  state.phase="running"; state.logs=[]; state.stageData={}; state.prediction=null;
+  // Remember across runs whether Gemini has free quota. If known-dead, skip it entirely (no wasted waits).
+  try { state.geminiDead = (localStorage.getItem("oil_oracle_gemini_dead") === "1"); } catch(e){ state.geminiDead=false; }
   state.stageStatus=Object.fromEntries(STAGES.map(s=>[s.id,"pending"]));
   state.startTime=Date.now();
   document.getElementById("predict-home").classList.add("hidden");
@@ -779,6 +788,13 @@ async function gradeOne(date){
 }
 
 // ===== Test =====
+function resetGemini(){
+  try { localStorage.removeItem("oil_oracle_gemini_dead"); } catch(e){}
+  const el=document.getElementById("test-result");
+  el.className="test-result test-ok";
+  el.innerHTML="✓ Gemini re-enabled. If you've fixed your Google billing/API, the next run will try Gemini again. If it still has no quota, it'll auto-skip after one try.";
+}
+
 async function testAll(){
   const el=document.getElementById("test-result");
   el.className="test-result test-warn"; el.textContent="Testing all systems...";
