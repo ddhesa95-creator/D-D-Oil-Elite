@@ -350,9 +350,11 @@ async function ai({ provider, system, user, useSearch=false, maxTokens=4000, tem
     if (res.ok) { const d = await res.json(); return d.text || ""; }
     let err; try { err = await res.json(); } catch { err = { error:`HTTP ${res.status}` }; }
     const msg = (err.error||"Unknown") + (err.details?`: ${err.details}`:"");
-    const rl = res.status===429 || msg.includes("429") || msg.includes("rate");
+    const rl = res.status===429 || msg.includes("429") || msg.includes("rate") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota");
     if (rl && attempt<maxRetries) {
-      const w = (err.retryAfter || (20 + attempt*15));
+      // Gemini free tier resets per-minute; wait longer for it specifically
+      const baseWait = provider==="gemini" ? 30 : 15;
+      const w = (err.retryAfter || (baseWait + attempt*20));
       addLog(`⏳ ${provider} rate limit — waiting ${w}s, retry ${attempt+1}/${maxRetries}...`, "warn");
       await new Promise(r=>setTimeout(r, w*1000)); continue;
     }
@@ -363,21 +365,39 @@ async function ai({ provider, system, user, useSearch=false, maxTokens=4000, tem
 function addLog(msg,type="info"){ state.logs.push({t:new Date().toLocaleTimeString("en-US",{hour12:false}),msg,type}); if(state.logs.length>120)state.logs.shift(); renderRunning(); }
 
 async function fetchAnchor() {
-  addLog("📡 Fetching FRED authoritative prices + Polymarket odds...", "start");
+  addLog("📡 Fetching live anchors (FRED · EIA · Polymarket · GDELT)...", "start");
   try {
-    const r = await fetch("/api/data");
-    if (!r.ok) { addLog("⚠ Anchor fetch failed — AI will rely on search only", "warn"); return null; }
+    const ctrl = new AbortController();
+    const to = setTimeout(()=>ctrl.abort(), 25000);
+    const r = await fetch("/api/data", { signal: ctrl.signal });
+    clearTimeout(to);
+    if (!r.ok) { addLog("⚠ Anchor returned error — AI will rely on live search", "warn"); return null; }
     const d = await r.json();
+    // Merge: prefer FRED, fall back to EIA for each price
+    const fred = (d.anchors && d.anchors.fred) || d.prices || {};
+    const eia = (d.anchors && typeof d.anchors.eia === "object") ? d.anchors.eia : {};
+    const merged = {
+      wti: fred.wti || eia.wti || null,
+      brent: fred.brent || eia.brent || null,
+      gas: fred.gas || eia.gasoline || null,
+      diesel: fred.diesel || eia.diesel || null,
+      heatingoil: fred.heatingoil || null,
+      dxy: fred.dxy || null,
+    };
+    d.prices = merged; // frontend reads d.prices
     state.anchor = d;
-    const p = d.prices || {};
     const bits = [];
-    if (p.wti) bits.push(`WTI ${p.wti.value} (${p.wti.date})`);
-    if (p.brent) bits.push(`Brent ${p.brent.value}`);
-    if (p.gas) bits.push(`Gas ${p.gas.value}`);
-    addLog(`✓ FRED anchor: ${bits.join(" · ")||"partial"}`, "ok");
-    if (d.polymarket) addLog(`✓ Polymarket: ${d.polymarket.length} oil-related markets`, "ok");
+    if (merged.wti) bits.push(`WTI ${merged.wti.value}`);
+    if (merged.brent) bits.push(`Brent ${merged.brent.value}`);
+    if (merged.diesel) bits.push(`Diesel ${merged.diesel.value}`);
+    if (bits.length) addLog(`✓ Price anchor: ${bits.join(" · ")}`, "ok");
+    else addLog("⚠ No FRED/EIA prices returned — AI uses live search for prices", "warn");
+    if (d.polymarket) addLog(`✓ Polymarket: ${d.polymarket.length} markets · GDELT: ${d.gdelt?"✓":"○"}`, "ok");
     return d;
-  } catch(e){ addLog("⚠ Anchor error: "+e.message, "warn"); return null; }
+  } catch(e){
+    addLog("⚠ Anchor "+(e.name==="AbortError"?"timed out":"error: "+e.message)+" — AI uses live search", "warn");
+    return null;
+  }
 }
 
 async function runStage(stage) {
@@ -422,9 +442,15 @@ async function run() {
       addLog(`✓ Quick research — ${text.length} chars`, "ok");
       briefing = `═══ OIL INTELLIGENCE ═══\n${text}`;
     } else {
-      addLog("◢ FULL ELITE · 5 Gemini agents (free, parallel)", "start");
-      // Gemini free tier allows parallel — no Anthropic rate limit here
-      const results = await Promise.all(STAGES.map(s=>runStage(s)));
+      addLog("◢ FULL ELITE · 5 Gemini agents (sequential, free-tier safe)", "start");
+      // Gemini free tier = 15 req/min. Run sequentially with short gaps to stay under it.
+      const results = [];
+      for (let i = 0; i < STAGES.length; i++) {
+        results.push(await runStage(STAGES[i]));
+        if (i < STAGES.length - 1) {
+          await new Promise(r => setTimeout(r, 5000)); // 5s gap = ~12 req/min, safely under 15
+        }
+      }
       briefing = results.map(r=>{const st=STAGES.find(s=>s.id===r.stage);return `═══ ${st.icon} ${st.label} ═══\n${r.text}`;}).join("\n\n");
     }
 
@@ -446,16 +472,16 @@ ${briefing}`;
       { id:"grok",   label:"Grok", provider:"grok" },
     ];
     const votes = [];
-    await Promise.all(voterDefs.map(async v => {
+    for (const v of voterDefs) {
       try {
         const txt = await ai({ provider:v.provider, system:"Decisive independent oil analyst. STRICT JSON only.", user:VOTE_PROMPT, useSearch:false, maxTokens:500, temperature:0.4 });
         const m = txt.match(/\{[\s\S]*\}/);
         if (m) { const vote = JSON.parse(m[0]); vote._voter = v.label; votes.push(vote); addLog(`  🗳️ ${v.label}: ${vote.direction} ${vote.target} (${vote.confidence_pct}%)`, "gem"); }
+        await new Promise(r => setTimeout(r, 4000)); // gap between voters for rate limits
       } catch(e) {
-        // provider not configured or failed — skip silently unless it's the only one
         if (!String(e.message).includes("not configured")) addLog(`  ⚠ ${v.label} vote skipped: ${e.message.slice(0,60)}`, "info");
       }
-    }));
+    }
     state.votes = votes;
     if (votes.length) {
       const dirCounts = votes.reduce((a,v)=>{a[v.direction]=(a[v.direction]||0)+1;return a;},{});
