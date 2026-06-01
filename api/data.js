@@ -17,10 +17,24 @@ const FETCH_HEADERS = {
   'Accept': 'text/csv,application/json,text/plain,*/*',
 };
 
+// Wrap any fetch with a hard timeout so one slow source can't stall everything
+async function fetchTimeout(url, opts = {}, ms = 8000) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { ...opts, signal: ctrl.signal });
+    clearTimeout(id);
+    return r;
+  } catch (e) {
+    clearTimeout(id);
+    throw e;
+  }
+}
+
 async function fetchFredLatest(seriesId) {
   const url = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${seriesId}&cosd=2025-01-01`;
   try {
-    const r = await fetch(url, { headers: FETCH_HEADERS });
+    const r = await fetchTimeout(url, { headers: FETCH_HEADERS });
     if (!r.ok) return null;
     const csv = await r.text();
     const lines = csv.trim().split('\n');
@@ -36,7 +50,7 @@ async function fetchFredHistory(seriesId, days = 30) {
   const start = new Date(Date.now() - (days + 25) * 86400000).toISOString().slice(0, 10);
   const url = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${seriesId}&cosd=${start}`;
   try {
-    const r = await fetch(url, { headers: FETCH_HEADERS });
+    const r = await fetchTimeout(url, { headers: FETCH_HEADERS });
     if (!r.ok) return null;
     const csv = await r.text();
     const lines = csv.trim().split('\n');
@@ -62,7 +76,7 @@ async function fetchEIA(key) {
   await Promise.all(Object.entries(series).map(async ([k, sid]) => {
     try {
       const url = `https://api.eia.gov/v2/seriesid/${sid}?api_key=${key}`;
-      const r = await fetch(url, { headers: FETCH_HEADERS });
+      const r = await fetchTimeout(url, { headers: FETCH_HEADERS });
       if (!r.ok) { out[k] = null; return; }
       const j = await r.json();
       const row = j?.response?.data?.[0];
@@ -77,7 +91,7 @@ async function fetchTradingEconomics(key) {
   const auth = key || 'guest:guest';
   try {
     const url = `https://api.tradingeconomics.com/markets/commodity/crude%20oil,brent%20crude%20oil?c=${encodeURIComponent(auth)}&f=json`;
-    const r = await fetch(url, { headers: FETCH_HEADERS });
+    const r = await fetchTimeout(url, { headers: FETCH_HEADERS });
     if (!r.ok) return null;
     const j = await r.json();
     if (!Array.isArray(j)) return null;
@@ -113,7 +127,7 @@ export default async function handler(req, res) {
       fetchTradingEconomics(teKey),
       (async () => {
         try {
-          const r = await fetch('https://gamma-api.polymarket.com/markets?closed=false&limit=10&order=volume&ascending=false', { headers: FETCH_HEADERS });
+          const r = await fetchTimeout('https://gamma-api.polymarket.com/markets?closed=false&limit=10&order=volume&ascending=false', { headers: FETCH_HEADERS }, 6000);
           if (!r.ok) return null;
           const d = await r.json();
           const rel = (Array.isArray(d) ? d : []).filter(m => {
@@ -126,7 +140,7 @@ export default async function handler(req, res) {
       (async () => {
         try {
           const q = encodeURIComponent('(oil OR crude OR OPEC OR "Strait of Hormuz" OR Iran) sourcelang:eng');
-          const r = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${q}&mode=tonechart&format=json&timespan=3d`, { headers: FETCH_HEADERS });
+          const r = await fetchTimeout(`https://api.gdeltproject.org/api/v2/doc/doc?query=${q}&mode=tonechart&format=json&timespan=3d`, { headers: FETCH_HEADERS }, 6000);
           if (!r.ok) return null;
           const txt = await r.text();
           const gj = JSON.parse(txt);
