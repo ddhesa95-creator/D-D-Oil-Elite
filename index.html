@@ -330,7 +330,7 @@ Schema:
   "watch_list":[],"weekly_outlook":"2-3 sentence outlook for the whole week","executive_summary":""
 }`;
 
-let state = { mode:"full", phase:"idle", logs:[], stageStatus:{}, stageData:{}, prediction:null, prevPrediction:null, anchor:null, votes:[], heretic:"", elapsed:0, startTime:null };
+let state = { mode:"full", phase:"idle", logs:[], stageStatus:{}, stageData:{}, prediction:null, prevPrediction:null, anchor:null, votes:[], heretic:"", geminiDead:false, elapsed:0, startTime:null };
 
 const dirColor=(d)=>d==="UP"?"#5fffaf":d==="DOWN"?"#ff4d6d":"#ffb84d";
 const dirSign=(d)=>d==="UP"?"▲":d==="DOWN"?"▼":"→";
@@ -400,20 +400,40 @@ async function fetchAnchor() {
   }
 }
 
+// Smart research: try Gemini (free, web search); if it fails, fall back to Claude's web search
+async function smartResearch({ system, user }) {
+  // Skip Gemini entirely if we've already learned it's dead this session
+  if (!state.geminiDead) {
+    try {
+      return { text: await ai({ provider:"gemini", system, user, useSearch:true }), via:"Gemini" };
+    } catch(e) {
+      const msg = String(e.message||"");
+      if (msg.includes("429") || msg.includes("quota") || msg.includes("limit: 0") || msg.includes("RESOURCE_EXHAUSTED")) {
+        state.geminiDead = true; // stop trying Gemini for the rest of this run
+        addLog("⚠ Gemini quota unavailable — switching research to Claude web search", "warn");
+      } else {
+        throw e; // a real error, not quota — surface it
+      }
+    }
+  }
+  // Fallback: Claude with its own web search
+  return { text: await ai({ provider:"claude", system, user, useSearch:true, maxTokens:2500 }), via:"Claude-search" };
+}
+
 async function runStage(stage) {
   state.stageStatus[stage.id]="running";
-  addLog(`${stage.icon} [Gemini] ${stage.label}...`, "gem");
+  addLog(`${stage.icon} ${stage.label}...`, "gem");
   try {
     const today = new Date().toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
-    const text = await ai({ provider:"gemini", system:`Specialist oil intelligence analyst. Today is ${today}. Use Google Search aggressively. Specific numbers + sources.`, user:stage.prompt+`\n\nToday is ${today}.`, useSearch:true });
-    state.stageData[stage.id]=text; state.stageStatus[stage.id]="done";
-    addLog(`✓ ${stage.label} — ${text.length} chars`, "ok");
-    return { stage:stage.id, text };
+    const r = await smartResearch({ system:`Specialist oil intelligence analyst. Today is ${today}. Search the web aggressively. Specific numbers + sources.`, user:stage.prompt+`\n\nToday is ${today}.` });
+    state.stageData[stage.id]=r.text; state.stageStatus[stage.id]="done";
+    addLog(`✓ ${stage.label} — ${r.text.length} chars (${r.via})`, "ok");
+    return { stage:stage.id, text:r.text };
   } catch(e){ state.stageStatus[stage.id]="error"; addLog(`⚠ ${stage.label} — ${e.message}`, "warn"); return { stage:stage.id, text:`[FAILED: ${e.message}]` }; }
 }
 
 async function run() {
-  state.phase="running"; state.logs=[]; state.stageData={}; state.prediction=null;
+  state.phase="running"; state.logs=[]; state.stageData={}; state.prediction=null; state.geminiDead=false;
   state.stageStatus=Object.fromEntries(STAGES.map(s=>[s.id,"pending"]));
   state.startTime=Date.now();
   document.getElementById("predict-home").classList.add("hidden");
@@ -435,14 +455,14 @@ async function run() {
 
     let briefing;
     if (state.mode==="quick") {
-      addLog("◢ QUICK · 1 Gemini sweep", "start");
+      addLog("◢ QUICK · unified research sweep", "start");
       state.stageStatus.quick="running"; renderRunning();
-      const text = await ai({ provider:"gemini", system:`Elite oil analyst. Today is ${today}. Use Google Search. Specific numbers+sources.`, user:QUICK_PROMPT+`\n\nToday is ${today}.`, useSearch:true });
-      state.stageData.quick=text; state.stageStatus.quick="done";
-      addLog(`✓ Quick research — ${text.length} chars`, "ok");
-      briefing = `═══ OIL INTELLIGENCE ═══\n${text}`;
+      const r = await smartResearch({ system:`Elite oil analyst. Today is ${today}. Search the web. Specific numbers+sources.`, user:QUICK_PROMPT+`\n\nToday is ${today}.` });
+      state.stageData.quick=r.text; state.stageStatus.quick="done";
+      addLog(`✓ Quick research — ${r.text.length} chars (${r.via})`, "ok");
+      briefing = `═══ OIL INTELLIGENCE ═══\n${r.text}`;
     } else {
-      addLog("◢ FULL ELITE · 5 Gemini agents (sequential, free-tier safe)", "start");
+      addLog("◢ FULL ELITE · 5 research agents (sequential, free-tier safe)", "start");
       // Gemini free tier = 15 req/min. Run sequentially with short gaps to stay under it.
       const results = [];
       for (let i = 0; i < STAGES.length; i++) {
@@ -470,7 +490,8 @@ ${briefing}`;
       { id:"groq",   label:"Groq/Llama", provider:"groq" },
       { id:"openai", label:"GPT-4o", provider:"openai" },
       { id:"grok",   label:"Grok", provider:"grok" },
-    ];
+    ].filter(v => !(v.provider === "gemini" && state.geminiDead)); // skip dead Gemini
+    if (state.geminiDead) addLog("  (Gemini skipped in council — quota unavailable)", "info");
     const votes = [];
     for (const v of voterDefs) {
       try {
