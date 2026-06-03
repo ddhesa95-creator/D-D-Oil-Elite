@@ -296,7 +296,7 @@ const QUICK_PROMPT = `Search the web RIGHT NOW (use Google Search) and gather cu
 const PREDICTION_SYSTEM = `You are the world's top oil quant, ex-head of Goldman's oil desk, making DAILY OPEN/CLOSE calls for the WEEK. You receive: (A) an authoritative FRED price anchor + 30-day history, (B) live intelligence reports, (C) the exact current date and day-of-week. Synthesize into precision daily predictions.
 
 HARD RULES:
-1. The FRED anchor is ground truth for recent settled prices. Intraday search gives today's live action. If they conflict, trust intraday for "now", FRED for "last settle", and NOTE the discrepancy.
+1. PRICE PRIORITY: The live intraday search is the TRUTH for current price ("now", "WTI current"). FRED daily series LAG 2-3 business days and are often stale (especially on weekends) — use FRED ONLY as a sanity check / historical context, NEVER as the current price. If FRED and live search differ by more than ~$2, the live search wins for all "current"/"now"/"today" fields, and you should briefly note FRED is lagging. Your wti_current, brent_current, todays_open, todays_close_or_now MUST come from live search, not FRED.
 2. Use ONLY numbers present in the inputs. If a field is genuinely absent, output null — NEVER invent a number.
 3. Account for crowded positioning (contrarian risk) and the single biggest binary catalyst.
 4. CALENDAR LOGIC: The user gives today's date and weekday. Produce a forecast for EACH of the 5 trading days of the CURRENT trading week (Monday through Friday). For days that have ALREADY happened this week, report the ACTUAL open/close if known from the data (mark as "actual"). For today and future days, forecast them. Oil futures don't trade over the weekend — for Saturday/Sunday, give "weekend_gap_risk" instead (what could gap the price at Sunday/Monday open).
@@ -539,31 +539,86 @@ ${briefing}`;
     addLog("🧠 TIER 4 · Claude (head actuary) adjudicates all inputs...", "start");
     const councilStr = votes.length ? `\n\nINDEPENDENT VOTING COUNCIL:\n${votes.map(v=>`- ${v._voter}: ${v.direction} ${v.target} @ ${v.confidence_pct}% — ${v.one_line_reason}`).join("\n")}` : "";
     const hereticStr = heretic ? `\n\nADVERSARIAL HERETIC COUNTER-THESIS (weigh this seriously):\n${heretic}` : "";
-    const raw = await ai({ provider:"claude", system:PREDICTION_SYSTEM, user:`TODAY IS ${today} (${weekday}).\n\n${anchorStr}\n\nLIVE INTELLIGENCE:\n\n${briefing}${councilStr}${hereticStr}\n\nAs head actuary, weigh the council consensus AND the Heretic's counter-thesis. Where the council crowds one way but the Heretic exposes real risk, reflect that in calibrated (not overconfident) confidence. Produce the full Monday-Friday forecast for THIS week. Days already past = actual if known. Today and future = forecast.`, useSearch:false, maxTokens:4500 });
+    const buildSynthUser = (briefLen) => `TODAY IS ${today} (${weekday}).\n\n${anchorStr}\n\nLIVE INTELLIGENCE:\n\n${briefing.slice(0,briefLen)}${councilStr}${hereticStr}\n\nAs head actuary, weigh the council consensus AND the Heretic's counter-thesis. Where the council crowds one way but the Heretic exposes real risk, reflect that in calibrated (not overconfident) confidence. Produce the full Monday-Friday forecast for THIS week. Days already past = actual if known. Today and future = forecast.`;
 
-    let jt=raw; const m=raw.match(/\{[\s\S]*\}/); if(m)jt=m[0]; jt=jt.replace(/```json|```/g,"").trim();
-    let parsed;
-    try { parsed=JSON.parse(jt); }
-    catch(e){ addLog("⚠ JSON retry via Claude...", "warn"); const fx=await ai({provider:"claude",system:"Fix into valid JSON. Output ONLY the JSON object.",user:jt,maxTokens:4000}); const fm=fx.match(/\{[\s\S]*\}/); parsed=JSON.parse(fm?fm[0]:fx.replace(/```json|```/g,"").trim()); }
+    // Try synthesis; if it fails on token-limit, retry with progressively trimmed briefing
+    let raw = null;
+    const briefSizes = [briefing.length, 9000, 5000, 3000];
+    for (let i=0;i<briefSizes.length;i++){
+      try {
+        raw = await ai({ provider:"claude", system:PREDICTION_SYSTEM, user:buildSynthUser(briefSizes[i]), useSearch:false, maxTokens:4500 });
+        break;
+      } catch(e){
+        const m=String(e.message||"");
+        const tokenIssue = m.includes("token") || m.includes("429") || m.includes("rate") || m.includes("too long") || m.includes("max");
+        if (tokenIssue && i<briefSizes.length-1){
+          addLog(`⚠ Synthesis input too large — retrying with trimmed data (${briefSizes[i+1]} chars)...`, "warn");
+          continue;
+        }
+        throw e;
+      }
+    }
+
+    // Robust JSON extraction: try direct, then repair via Claude, then last-resort minimal object
+    let parsed = null;
+    const tryParse = (s) => { try { return JSON.parse(s); } catch { return null; } };
+    let jt=raw||""; const m=jt.match(/\{[\s\S]*\}/); if(m)jt=m[0]; jt=jt.replace(/```json|```/g,"").trim();
+    parsed = tryParse(jt);
+    if (!parsed) {
+      addLog("⚠ Repairing JSON...", "warn");
+      try {
+        const fx = await ai({ provider:"claude", system:"You fix malformed JSON. Output ONLY the corrected JSON object, no commentary, no backticks.", user:jt.slice(0,8000), maxTokens:4500 });
+        const fm = fx.match(/\{[\s\S]*\}/);
+        parsed = tryParse(fm?fm[0]:fx.replace(/```json|```/g,"").trim());
+      } catch(e){ /* fall through */ }
+    }
+    if (!parsed) {
+      // Last resort: don't crash — show a minimal honest result built from what we have
+      addLog("⚠ Could not parse full forecast — showing partial result", "warn");
+      const fallbackDir = votes.length ? (votes.reduce((a,v)=>{a[v.direction]=(a[v.direction]||0)+1;return a;},{}) ) : {};
+      const topDir = Object.entries(fallbackDir).sort((a,b)=>b[1]-a[1])[0];
+      parsed = {
+        today_date: today, today_weekday: weekday,
+        data_quality_score: "3",
+        wti_current: null, brent_current: null,
+        trade_signal: "HOLD",
+        primary_driver: "Synthesis parsing failed — showing council summary only. Re-run for full forecast.",
+        tomorrow_target: votes[0]?.target || null,
+        tomorrow_direction: topDir ? topDir[0] : "SIDEWAYS",
+        tomorrow_confidence_pct: 30,
+        tomorrow_range_low: null, tomorrow_range_high: null,
+        week: {},
+        executive_summary: "The forecast model returned data that couldn't be fully parsed. The voting council and Heretic results above are still valid. Please click Run Again for a complete forecast.",
+        self_critique: "Partial result due to a formatting error in synthesis. Not a complete analysis.",
+        key_factors: [], scenarios: {}, watch_list: [],
+        bull_scenario:{}, base_scenario:{}, bear_scenario:{},
+      };
+    }
 
     // Compute diff vs last run (stored in localStorage)
     try {
       const prevRaw = localStorage.getItem("oil_oracle_last_prediction");
-      if (prevRaw) state.prevPrediction = JSON.parse(prevRaw);
+      if (prevRaw) { const obj = JSON.parse(prevRaw); state.prevPrediction = obj && obj.p ? obj : null; }
       localStorage.setItem("oil_oracle_last_prediction", JSON.stringify({ p: parsed, at: new Date().toISOString() }));
     } catch(e) { /* localStorage may be unavailable */ }
 
     state.prediction=parsed; state.phase="done";
-    addLog(`✓ PREDICTION COMPLETE — ${parsed.tomorrow_confidence_pct}% confidence · quality ${parsed.data_quality_score}/10`, "ok");
+    addLog(`✓ PREDICTION COMPLETE — ${parsed.tomorrow_confidence_pct||"?"}% confidence · quality ${parsed.data_quality_score||"?"}/10`, "ok");
 
-    // auto-log to ledger
-    try {
-      await fetch("/api/ledger",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"save",prediction:parsed})});
-      addLog("📝 Logged to track record", "ok");
-    } catch(e){ addLog("⚠ Could not log to track record: "+e.message, "warn"); }
+    // auto-log to ledger (only if we got a real prediction, not the fallback)
+    if (parsed.data_quality_score !== "3" || parsed.wti_current) {
+      try {
+        await fetch("/api/ledger",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"save",prediction:parsed})});
+        addLog("📝 Logged to track record", "ok");
+      } catch(e){ addLog("⚠ Could not log to track record: "+e.message, "warn"); }
+    }
 
     stopTimer(); renderResults();
-  } catch(e){ state.phase="error"; addLog(`✗ FATAL: ${e.message}`, "err"); stopTimer(); renderError(e.message); }
+  } catch(e){
+    state.phase="error";
+    addLog(`✗ Run failed: ${e.message}`, "err");
+    stopTimer(); renderError(e.message);
+  }
 }
 
 let timer=null;
@@ -596,7 +651,14 @@ function renderResults(){
   const p=state.prediction; if(!p)return;
   document.getElementById("run-status").innerHTML="";
   const sc=sigColor(p.trade_signal);
-  const anchorNote=(k)=>{const a=state.anchor&&state.anchor.prices&&state.anchor.prices[k];return a?`FRED ${a.value} (${a.date})`:"";};
+  const anchorNote=(k)=>{
+    const a=state.anchor&&state.anchor.prices&&state.anchor.prices[k];
+    if(!a) return "";
+    // Flag if the FRED date is more than 2 days old (weekend/lag) so it's clearly "last settled"
+    const ageDays = a.date ? Math.floor((Date.now()-new Date(a.date).getTime())/86400000) : 0;
+    const tag = ageDays>2 ? `settled ${a.date} (lags live)` : `settled ${a.date}`;
+    return `${a.value} ${tag}`;
+  };
 
   // ---- DIFF vs last run ----
   let diffHtml = "";
